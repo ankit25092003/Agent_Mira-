@@ -80,3 +80,108 @@ Type the following keywords into the top search bar to see properties filter ins
 ### 4. Saved Properties
 1. Click the **"♡ Save"** button on any property.
 2. Watch the red indicator in the top navigation bar instantly increase!
+
+## 🏗️ How It's Built
+
+Agent Mira is split into three services that run independently and talk to each
+other over HTTP. Think of it like three specialists on the same team — each does
+its own job, but hands off to the others when needed.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     React Frontend (Vite)                   │
+│              Property UI · Filters · Chat · Comparison      │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ HTTP
+              ┌─────────────▼──────────────┐
+              │     Node.js Backend         │
+              │   Express · Auth · Routes   │
+              └──┬──────────┬──────────┬───┘
+                 │          │          │
+        ┌────────▼───┐  ┌───▼────┐  ┌─▼──────────────┐
+        │  MongoDB   │  │ Gemini │  │ Python ML       │
+        │   Atlas    │  │   API  │  │ Service (FastAPI)│
+        └────────────┘  └────────┘  └─────────────────┘
+```
+
+All three services boot up together with a single `npm start` — so despite the
+distributed setup, the dev experience stays smooth.
+
+---
+
+## ✨ Key Features
+
+**Property Search & Filtering** — Filtering is done entirely on the client side,
+so results update instantly as you type. No page reloads, no waiting on the server.
+Keywords match across property titles and location names in real time.
+
+**Price Prediction** — A scikit-learn model running inside the Python service takes
+normalized property features and returns an estimated market value. That number
+gets injected straight into the comparison table, so you can size up properties
+side by side without leaving the page.
+
+**AI Chatbot** — Powered by Google Gemini with streaming responses. It's
+context-aware, meaning it understands which properties you're currently looking at
+and can answer questions about them specifically — not just generic real estate
+advice.
+
+---
+
+## 🔄 How a Chat Message Flows
+
+When you type a message in the chatbot, here's what happens behind the scenes:
+```
+You                 Frontend            Backend             Gemini
+ │                     │                   │                   │
+ │──── type message ──▶│                   │                   │
+ │                     │── POST /api/chat ▶│                   │
+ │                     │                   │── prompt + context▶│
+ │                     │                   │                   │
+ │                     │                   │◀── stream tokens ──│
+ │                     │◀─── stream ───────│                   │
+ │◀── words appear ────│                   │                   │
+```
+
+---
+
+## ⚠️ Challenges We Faced
+
+**Keeping three services in sync** was the biggest architectural headache. When
+your frontend, backend, and ML service all run on different ports, CORS errors
+become a daily companion. We solved this with a unified startup script, consistent
+CORS configuration across all three services, and environment variables for service
+discovery so nothing is ever hardcoded.
+
+**ML model performance** was a real concern early on. Deserializing a pickle file
+on every prediction request would be way too slow. The fix was simple but effective
+— we cache the model in memory on startup and added a preprocessing pipeline to
+normalize inputs before they reach the model.
+
+**Gemini API rate limits** occasionally caused the chatbot to stall under heavier
+use. We built a request queuing system with exponential backoff, and cached
+responses for common property-related queries so repeated questions don't keep
+burning through the API quota.
+
+**Frontend performance** degraded noticeably with large property lists. Virtual
+scrolling, `React.memo`, debounced search inputs, and lazy-loaded images brought
+things back to a smooth experience even with hundreds of listings on screen.
+
+**State management** got complex fast — saved properties, active comparisons, and
+filters all needed to stay in sync across components. We centralized everything
+through the Context API, used `localStorage` to persist user preferences across
+sessions, and kept logic clean with custom hooks.
+```
+User Action
+     │
+     ▼
+ Context API
+  ┌──┴──────────────┬──────────────────┐
+  ▼                 ▼                  ▼
+Saved            Active            Comparison
+Properties       Filters              List
+  │                 │                  │
+  └─────────────────┴──────────────────┘
+                    │
+                    ▼
+              localStorage
+          (persists across sessions)
+```
